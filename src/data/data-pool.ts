@@ -105,7 +105,7 @@ export class DepartureTimesPool {
       try {
         const parser = DataParser.getParser(state);
 
-        this._createOrUpdateEntry(config, parser);
+        this._createOrUpdateEntry(config, parser, hass);
       } catch (e) {
         if (e instanceof UnsupportedEntityError) {
           console.warn("Not supported entity found:" + e.entityId);
@@ -120,7 +120,28 @@ export class DepartureTimesPool {
     });
   }
 
-  private _createOrUpdateEntry(config: EntityConfig, parser: Parser) {
+  private _resolveCustomDestination(hass: HomeAssistant, value: string | null): string | null {
+    if (value == null) {
+      return value;
+    }
+
+    const trimmed = value.trim();
+    const looksLikeTemplate = trimmed.includes("{{") || trimmed.includes("{%") || trimmed.includes("[[");
+
+    if (!looksLikeTemplate || !hass?.renderTemplate) {
+      return trimmed;
+    }
+
+    try {
+      const rendered = hass.renderTemplate(trimmed);
+      return typeof rendered === "string" ? rendered : String(rendered);
+    } catch (error) {
+      console.warn("Failed to render custom destination template:", error);
+      return trimmed;
+    }
+  }
+
+  private _createOrUpdateEntry(config: EntityConfig, parser: Parser, hass: HomeAssistant) {
     const entityId = config.entity;
     const lineName = config.lineName || parser.getLineName();
     const lineColor = config.lineColor;
@@ -132,7 +153,7 @@ export class DepartureTimesPool {
     let direction: string | null;
     switch (destinationSource) {
       case DestinationSource.CUSTOM:
-        direction = config.destinationName;
+        direction = this._resolveCustomDestination(hass, config.destinationName);
         break;
       case DestinationSource.HEAD_SIGN:
         direction = null;
